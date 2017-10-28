@@ -38,7 +38,7 @@ as well as Adafruit raw 1.8" TFT display
 #elif defined(ARDUINO_FEATHER52)
   typedef volatile uint32_t RwReg;
   #define USE_FAST_IO
-#elif defined(ESP8266)
+#elif defined(ESP8266) || defined(ESP32)
   #include <pgmspace.h>
 #elif defined(__SAM3X8E__)
   #undef __FlashStringHelper::F(string_literal)
