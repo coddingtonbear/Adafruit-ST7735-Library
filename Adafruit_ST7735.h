@@ -27,6 +27,7 @@ as well as Adafruit raw 1.8" TFT display
 #include "Arduino.h"
 #include "Print.h"
 #include <Adafruit_GFX.h>
+#include <SPI.h>
 
 #if defined(__AVR__) || defined(CORE_TEENSY)
   #include <avr/pgmspace.h>
@@ -134,6 +135,7 @@ class Adafruit_ST7735 : public Adafruit_GFX {
 
   Adafruit_ST7735(int8_t CS, int8_t RS, int8_t SID, int8_t SCLK, int8_t RST = -1);
   Adafruit_ST7735(int8_t CS, int8_t RS, int8_t RST = -1);
+  Adafruit_ST7735(SPIClass* spi_class, int8_t CS, int8_t RS, int8_t RST = -1);
 
   void     initB(void),                             // for ST7735B displays
            initR(uint8_t options = INITR_GREENTAB), // for ST7735R
@@ -177,6 +179,8 @@ class Adafruit_ST7735 : public Adafruit_GFX {
 
   int8_t  _cs, _dc, _rst, _sid, _sclk;
   uint8_t colstart, rowstart, xstart, ystart; // some displays need this changed
+  SPIClass* spi;
+  bool preInitialized;
 
 #if defined(USE_FAST_IO)
   volatile RwReg  *dataport, *clkport, *csport, *dcport;

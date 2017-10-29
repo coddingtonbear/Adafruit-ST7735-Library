@@ -25,7 +25,6 @@ as well as Adafruit raw 1.8" TFT display
 #include <limits.h>
 #include "pins_arduino.h"
 #include "wiring_private.h"
-#include <SPI.h>
 
 inline uint16_t swapcolor(uint16_t x) { 
   return (x << 11) | (x & 0x07E0) | (x >> 11);
@@ -48,6 +47,8 @@ Adafruit_ST7735::Adafruit_ST7735(int8_t cs, int8_t dc, int8_t sid, int8_t sclk, 
   _sclk = sclk;
   _rst  = rst;
   hwSPI = false;
+  preInitialized = false;
+  spi = NULL;
 }
 
 // Constructor when using hardware SPI.  Faster, but must use SPI pins
@@ -58,7 +59,22 @@ Adafruit_ST7735::Adafruit_ST7735(int8_t cs, int8_t dc, int8_t rst)
   _dc   = dc;
   _rst  = rst;
   hwSPI = true;
+  preInitialized = false;
   _sid  = _sclk = -1;
+
+  spi = &SPI;
+}
+
+
+Adafruit_ST7735::Adafruit_ST7735(SPIClass* spi_bus, int8_t cs, int8_t dc, int8_t rst) 
+  : Adafruit_GFX(ST7735_TFTWIDTH_128, ST7735_TFTHEIGHT_160) {
+  _cs   = cs;
+  _dc   = dc;
+  _rst  = rst;
+  hwSPI = true;
+  _sid  = _sclk = -1;
+  preInitialized = true;
+  spi = spi_bus;
 }
 
 inline void Adafruit_ST7735::spiwrite(uint8_t c) {
@@ -67,16 +83,16 @@ inline void Adafruit_ST7735::spiwrite(uint8_t c) {
 
   if (hwSPI) {
 #if defined (SPI_HAS_TRANSACTION)
-      SPI.transfer(c);
+      spi->transfer(c);
 #elif defined (__AVR__) || defined(CORE_TEENSY)
       SPCRbackup = SPCR;
       SPCR = mySPCR;
-      SPI.transfer(c);
+      spi->transfer(c);
       SPCR = SPCRbackup;
 #elif defined (__arm__)
-      SPI.setClockDivider(21); //4MHz
-      SPI.setDataMode(SPI_MODE0);
-      SPI.transfer(c);
+      spi->setClockDivider(21); //4MHz
+      spi->setDataMode(SPI_MODE0);
+      spi->transfer(c);
 #endif
   } else {
 
@@ -100,7 +116,7 @@ inline void Adafruit_ST7735::spiwrite(uint8_t c) {
 
 void Adafruit_ST7735::writecommand(uint8_t c) {
 #if defined (SPI_HAS_TRANSACTION)
-  if (hwSPI)    SPI.beginTransaction(mySPISettings);
+  if (hwSPI)    spi->beginTransaction(mySPISettings);
 #endif
   DC_LOW();
   CS_LOW();
@@ -109,14 +125,14 @@ void Adafruit_ST7735::writecommand(uint8_t c) {
 
   CS_HIGH();
 #if defined (SPI_HAS_TRANSACTION)
-  if (hwSPI)    SPI.endTransaction();
+  if (hwSPI)    spi->endTransaction();
 #endif
 }
 
 
 void Adafruit_ST7735::writedata(uint8_t c) {
 #if defined (SPI_HAS_TRANSACTION)
-  if (hwSPI)    SPI.beginTransaction(mySPISettings);
+  if (hwSPI)    spi->beginTransaction(mySPISettings);
 #endif
   DC_HIGH();
   CS_LOW();
@@ -125,7 +141,7 @@ void Adafruit_ST7735::writedata(uint8_t c) {
 
   CS_HIGH();
 #if defined (SPI_HAS_TRANSACTION)
-  if (hwSPI)    SPI.endTransaction();
+  if (hwSPI)    spi->endTransaction();
 #endif
 }
 
@@ -329,20 +345,26 @@ void Adafruit_ST7735::commonInit(const uint8_t *cmdList) {
 
   if(hwSPI) { // Using hardware SPI
 #if defined (SPI_HAS_TRANSACTION)
-    SPI.begin();
+    if(!preInitialized) {
+      spi->begin();
+    }
     mySPISettings = SPISettings(8000000, MSBFIRST, SPI_MODE0);
 #elif defined (__AVR__) || defined(CORE_TEENSY)
     SPCRbackup = SPCR;
-    SPI.begin();
-    SPI.setClockDivider(SPI_CLOCK_DIV4);
-    SPI.setDataMode(SPI_MODE0);
+    if(!preInitialized) {
+      spi->begin();
+    }
+    spi->setClockDivider(SPI_CLOCK_DIV4);
+    spi->setDataMode(SPI_MODE0);
     mySPCR = SPCR; // save our preferred state
     //Serial.print("mySPCR = 0x"); Serial.println(SPCR, HEX);
     SPCR = SPCRbackup;  // then restore
 #elif defined (__SAM3X8E__)
-    SPI.begin();
-    SPI.setClockDivider(21); //4MHz
-    SPI.setDataMode(SPI_MODE0);
+    if(!preInitialized) {
+      spi->begin();
+    }
+    spi->setClockDivider(21); //4MHz
+    spi->setDataMode(SPI_MODE0);
 #endif
   } else {
     pinMode(_sclk, OUTPUT);
@@ -440,7 +462,7 @@ void Adafruit_ST7735::setAddrWindow(uint8_t x0, uint8_t y0, uint8_t x1,
 
 void Adafruit_ST7735::pushColor(uint16_t color) {
 #if defined (SPI_HAS_TRANSACTION)
-  if (hwSPI)    SPI.beginTransaction(mySPISettings);
+  if (hwSPI)    spi->beginTransaction(mySPISettings);
 #endif
 
   DC_HIGH();
@@ -450,7 +472,7 @@ void Adafruit_ST7735::pushColor(uint16_t color) {
   CS_HIGH();
 
 #if defined (SPI_HAS_TRANSACTION)
-  if (hwSPI)    SPI.endTransaction();
+  if (hwSPI)    spi->endTransaction();
 #endif
 }
 
@@ -461,7 +483,7 @@ void Adafruit_ST7735::drawPixel(int16_t x, int16_t y, uint16_t color) {
   setAddrWindow(x,y,x+1,y+1);
 
 #if defined (SPI_HAS_TRANSACTION)
-  if (hwSPI)     SPI.beginTransaction(mySPISettings);
+  if (hwSPI)     spi->beginTransaction(mySPISettings);
 #endif
 
   DC_HIGH();
@@ -471,7 +493,7 @@ void Adafruit_ST7735::drawPixel(int16_t x, int16_t y, uint16_t color) {
   CS_HIGH();
 
 #if defined (SPI_HAS_TRANSACTION)
-  if (hwSPI)     SPI.endTransaction();
+  if (hwSPI)     spi->endTransaction();
 #endif
 }
 
@@ -487,7 +509,7 @@ void Adafruit_ST7735::drawFastVLine(int16_t x, int16_t y, int16_t h,
   uint8_t hi = color >> 8, lo = color;
     
 #if defined (SPI_HAS_TRANSACTION)
-  if (hwSPI)      SPI.beginTransaction(mySPISettings);
+  if (hwSPI)      spi->beginTransaction(mySPISettings);
 #endif
 
   DC_HIGH();
@@ -499,7 +521,7 @@ void Adafruit_ST7735::drawFastVLine(int16_t x, int16_t y, int16_t h,
   CS_HIGH();
 
 #if defined (SPI_HAS_TRANSACTION)
-  if (hwSPI)      SPI.endTransaction();
+  if (hwSPI)      spi->endTransaction();
 #endif
 }
 
@@ -515,7 +537,7 @@ void Adafruit_ST7735::drawFastHLine(int16_t x, int16_t y, int16_t w,
   uint8_t hi = color >> 8, lo = color;
 
 #if defined (SPI_HAS_TRANSACTION)
-  if (hwSPI)      SPI.beginTransaction(mySPISettings);
+  if (hwSPI)      spi->beginTransaction(mySPISettings);
 #endif
 
   DC_HIGH();
@@ -527,7 +549,7 @@ void Adafruit_ST7735::drawFastHLine(int16_t x, int16_t y, int16_t w,
   CS_HIGH();
 
 #if defined (SPI_HAS_TRANSACTION)
-  if (hwSPI)      SPI.endTransaction();
+  if (hwSPI)      spi->endTransaction();
 #endif
 }
 
@@ -553,7 +575,7 @@ void Adafruit_ST7735::fillRect(int16_t x, int16_t y, int16_t w, int16_t h,
   uint8_t hi = color >> 8, lo = color;
     
 #if defined (SPI_HAS_TRANSACTION)
-  if (hwSPI)      SPI.beginTransaction(mySPISettings);
+  if (hwSPI)      spi->beginTransaction(mySPISettings);
 #endif
 
   DC_HIGH();
@@ -567,7 +589,7 @@ void Adafruit_ST7735::fillRect(int16_t x, int16_t y, int16_t w, int16_t h,
   CS_HIGH();
 
 #if defined (SPI_HAS_TRANSACTION)
-  if (hwSPI)      SPI.endTransaction();
+  if (hwSPI)      spi->endTransaction();
 #endif
 }
 
